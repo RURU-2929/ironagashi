@@ -259,7 +259,7 @@ $("undo").addEventListener("click", function(){ if (!undoStack.length || won) re
   stones = prev.map(function(s){ return mk(s.c, s.d, false); }); sim = Core.simulate(L, P, stoneArr()); schedule(old); SFX.remove(); ui(); });
 $("hint").addEventListener("click", function(){ audio(); var w = L.w, miss = L.sol.filter(function(s){ return !stones.some(function(t){ return t.c === s.y * w + s.x && t.d === s.d; }); });
   if (miss.length){ hintGhost = {c:miss[0].y * w + miss[0].x, d:miss[0].d, t:clk}; SFX.turn(); } });
-$("sound").addEventListener("click", function(){ soundOn = !soundOn; this.setAttribute("aria-pressed", soundOn ? "true" : "false"); this.textContent = soundOn ? "音 入" : "音 切"; if (soundOn){ audio(); SFX.place(); } });
+$("sound").addEventListener("click", function(){ soundOn = !soundOn; this.setAttribute("aria-pressed", soundOn ? "true" : "false"); this.textContent = soundOn ? "音 入" : "音 切"; if (soundOn){ unlockAudio(); SFX.place(); } });
 $("share").addEventListener("click", function(){
   var text = "いろながし 第" + (cur + 1) + "面" + (L.title ? "「" + L.title + "」" : "") + "を解いた(" + Object.keys(store).length + " / " + LEVELS.length + " 面)", b = $("share");
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function(){ b.textContent = "コピーしました"; }, function(){ b.textContent = text; });
@@ -281,9 +281,11 @@ function deny(){ SFX.deny(); var e = $("inv"); e.classList.remove("deny"); void 
 function cellAt(e){ var r = cv.getBoundingClientRect(), g = geom(), px = (e.clientX - r.left) * g.dpr, py = (e.clientY - r.top) * g.dpr;
   var x = Math.floor((px - g.ox) / g.cs), y = Math.floor((py - g.oy) / g.cs); return {x:x, y:y, px:px, py:py, ok:x >= 0 && y >= 0 && x < L.w && y < L.h, g:g}; }
 // 最初のタッチ・キー入力で音声を準備(ボタンより先に効かせる)
-function unlockAudio(){ audio(); if (AC && AC.state === "suspended") AC.resume(); }
-document.addEventListener("pointerdown", unlockAudio, true);
-document.addEventListener("keydown", unlockAudio, true);
+// iOS Safari は、ユーザー操作の中で AudioContext を再開し、無音を1つ鳴らさないと音が出ない
+function unlockAudio(){ if (!soundOn) return; audio(); if (!AC) return;
+  if (AC.state === "suspended") { try { AC.resume(); } catch (e) {} }
+  try { var sb = AC.createBuffer(1, 1, 22050), src = AC.createBufferSource(); src.buffer = sb; src.connect(AC.destination); src.start(0); } catch (e) {} }
+["pointerdown", "touchend", "click", "keydown"].forEach(function(t){ document.addEventListener(t, unlockAudio, true); });
 cv.addEventListener("pointerdown", function(e){ audio(); if (AC && AC.state === "suspended") AC.resume();
   if (won){ return; } var a = cellAt(e); if (!a.ok) return; try { cv.setPointerCapture(e.pointerId); } catch (x) {}
   drag = {c:a.y * L.w + a.x, px:a.px, py:a.py, d:-1}; e.preventDefault(); });
