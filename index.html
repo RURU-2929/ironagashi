@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>いろながし</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kurenaido&family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* 紙の上の水面に色水が流れる。盤を画面いっぱいに取り、文字と操作は上下の細い帯にまとめる。単一テーマ(明)。 */
+:root{
+  --paper:#f3f5f1;
+  --water:#dce9ee;
+  --water-deep:#c6d9e2;
+  --ink:#27363e;
+  --ink-dim:#66767e;
+  --line:#b5c6ce;
+  --accent:#2f74d0;
+  --font-display:"Zen Kurenaido","Hiragino Maru Gothic ProN","Yu Gothic UI",sans-serif;
+  --font-body:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Yu Gothic UI","Meiryo",sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-body);display:flex;justify-content:center;overscroll-behavior:none}
+.app{width:100%;max-width:min(820px,calc(100dvh - 250px));min-width:min(100%,340px);padding:10px 12px 18px;display:flex;flex-direction:column;gap:8px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{font-family:var(--font-display);font-weight:400;font-size:26px;letter-spacing:.08em;margin:0}
+.lv{font-size:14px;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.lv b{font-family:var(--font-display);font-weight:400;font-size:19px;color:var(--ink);margin-left:8px;letter-spacing:.06em}
+.tip{min-height:1.5em;margin:0;font-size:15px;line-height:1.5}
+.board{position:relative;width:100%;aspect-ratio:1/1;border-radius:20px;background:linear-gradient(160deg,var(--water),var(--water-deep));
+  box-shadow:inset 0 0 0 1px var(--line);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+.board.glow{animation:glow 1.1s ease-out}
+@keyframes glow{0%{box-shadow:inset 0 0 0 1px var(--line),0 0 0 0 rgba(242,182,50,.0)}25%{box-shadow:inset 0 0 0 3px #f2b632,0 0 34px 6px rgba(242,182,50,.55)}100%{box-shadow:inset 0 0 0 1px var(--line),0 0 0 0 rgba(242,182,50,0)}}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:pointer}
+.done{position:absolute;left:0;right:0;bottom:0;padding:14px 16px;background:rgba(243,245,241,.95);border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;transform:translateY(105%);transition:transform .28s cubic-bezier(.2,1.3,.4,1)}
+.done.on{transform:none}
+.done strong{font-family:var(--font-display);font-weight:400;font-size:24px;letter-spacing:.06em}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px 10px;flex-wrap:wrap}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.inv{display:flex;align-items:center;gap:7px;font-size:15px;color:var(--ink);flex:none}
+.inv b{font-family:var(--font-display);font-weight:400;font-size:22px;font-variant-numeric:tabular-nums;margin-left:2px}
+.inv i{width:36px;height:36px;border-radius:50%;background:#fbfbf8;border:2px solid #8c9aa1;display:inline-block;position:relative;transition:transform .15s,opacity .15s}
+.inv i::after{content:"";position:absolute;left:50%;top:50%;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid var(--ink);transform:translate(-50%,-60%)}
+.inv i.used{opacity:.25;transform:scale(.8)}
+.inv.deny{animation:deny .3s}
+@keyframes deny{20%{transform:translateX(-6px)}50%{transform:translateX(6px)}80%{transform:translateX(-3px)}}
+button{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 14px;cursor:pointer;font-size:14px}
+button:hover{border-color:var(--ink-dim)}
+button:active{transform:scale(.96)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--ink);color:#fff;border-color:var(--ink);padding:10px 22px;font-size:15px}
+button:disabled{opacity:.4;cursor:default}
+.btns{display:flex;gap:6px;flex-wrap:wrap}
+.mixes{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--ink-dim);align-items:center}
+.mixes i{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px}
+.levels{display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:6px}
+.levels button{padding:6px 0;border-radius:10px;font-size:13px;font-variant-numeric:tabular-nums}
+.levels button[aria-current="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.levels button.cleared{background:var(--ink);color:#fff;border-color:var(--ink)}
+@media (prefers-reduced-motion: reduce){.board.glow{animation:none}.done{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header><h1>いろながし</h1><span class="lv" id="lv"></span></header>
+  <div class="bar"><p class="tip" id="tip"></p><div class="inv" id="inv" aria-label="残りの石"></div></div>
+  <div class="board" id="board">
+    <canvas id="cv" aria-label="盤面。水面をなぞると矢印の石を置けます。石をタップすると拾えます"></canvas>
+    <div class="done" id="done">
+      <strong id="doneTitle">咲きました</strong>
+      <div class="btns"><button type="button" id="share">結果をコピー</button><button type="button" class="primary" id="nextBig">次の面へ</button></div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="btns">
+      <button type="button" id="undo">ひとつ戻す</button><button type="button" id="reset">やり直す</button>
+      <button type="button" id="hint">ヒント</button><button type="button" id="sound" aria-pressed="true">音 入</button>
+    </div>
+  </div>
+  <div class="mixes" aria-label="色の混ざり方">
+    <span><i style="background:#d9434e"></i> + <i style="background:#f2b632"></i> = <i style="background:#ee7f34"></i></span>
+    <span><i style="background:#f2b632"></i> + <i style="background:#2f74d0"></i> = <i style="background:#3fa565"></i></span>
+    <span><i style="background:#d9434e"></i> + <i style="background:#2f74d0"></i> = <i style="background:#8b55c9"></i></span>
+    <span><i style="background:#d9434e"></i> + <i style="background:#f2b632"></i> + <i style="background:#2f74d0"></i> = <i style="background:#5b4a3f"></i></span>
+  </div>
+  <div class="levels" id="levels" role="group" aria-label="面をえらぶ"></div>
+</div>
+<script>
+// いろながし:盤面のルール(ページと面生成で共通)。向き 0=上 1=右 2=下 3=左。色は顔料の集合 赤=1 黄=2 青=4。
+var Core = (function(){
+  var DX = [0,1,0,-1], DY = [-1,0,1,0];
+  // 種類 0=水面 1=泉 2=花 3=分かれ岩 4=黒い岩
+  function prep(L){
+    var n = L.w * L.h, type = new Uint8Array(n), idx = new Int16Array(n).fill(-1);
+    L.sources.forEach(function(s, i){ type[s.y*L.w+s.x] = 1; idx[s.y*L.w+s.x] = i; });
+    L.flowers.forEach(function(f, i){ type[f.y*L.w+f.x] = 2; idx[f.y*L.w+f.x] = i; });
+    (L.splits||[]).forEach(function(s){ type[s.y*L.w+s.x] = 3; });
+    (L.blocks||[]).forEach(function(s){ type[s.y*L.w+s.x] = 4; });
+    return {n:n, type:type, idx:idx};
+  }
+  // stone[セル] = 置かれた矢印石の向き(なければ -1)
+  function simulate(L, P, stone){
+    var n = P.n, w = L.w, h = L.h, type = P.type;
+    var color = new Uint8Array(n), out = new Uint8Array(n), inn = new Uint8Array(n), blocked = new Uint8Array(n);
+    var depth = new Int16Array(n).fill(-1), recv = new Uint8Array(L.flowers.length), q = [], head = 0, i;
+    for (i = 0; i < L.sources.length; i++){ var s = L.sources[i], c0 = s.y*w+s.x; color[c0] = s.p; out[c0] = 1 << s.d; depth[c0] = 0; q.push(c0); }
+    while (head < q.length && head < 40000){
+      var c = q[head++], x = c % w, y = (c - x) / w, col = color[c];
+      for (var d = 0; d < 4; d++){
+        if (!(out[c] & (1 << d))) continue;
+        var nx = x + DX[d], ny = y + DY[d];
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        var m = ny*w+nx, t = type[m], nc = color[m], no = out[m];
+        if (t === 0){
+          var sd = stone[m];
+          if (sd < 0){ nc |= col; no |= 1 << d; inn[m] |= 1 << d; }
+          else if (sd === ((d + 2) & 3)){ blocked[m] = 1; if (depth[m] < 0) depth[m] = depth[c] + 1; }
+          else { nc |= col; no |= 1 << sd; inn[m] |= 1 << d; }
+        }
+        else if (t === 3){ nc |= col; no |= (1 << ((d + 1) & 3)) | (1 << ((d + 3) & 3)); inn[m] |= 1 << d; }
+        else if (t === 2){ recv[P.idx[m]] |= col; nc |= col; inn[m] |= 1 << d; }
+        else { if (depth[m] < 0) depth[m] = depth[c] + 1; continue; }
+        if (nc !== color[m] || no !== out[m]){ color[m] = nc; out[m] = no; if (depth[m] < 0) depth[m] = depth[c] + 1; if (t !== 2) q.push(m); }
+      }
+    }
+    var ok = 0, bad = 0;
+    for (i = 0; i < L.flowers.length; i++){ if (recv[i] === L.flowers[i].need) ok++; else if (recv[i]) bad++; }
+    return {color:color, out:out, inn:inn, blocked:blocked, depth:depth, recv:recv, ok:ok, bad:bad, win:ok === L.flowers.length && ok > 0};
+  }
+  return {DX:DX, DY:DY, prep:prep, simulate:simulate};
+})();
+
+
+var LEVELS = [{"w": 4, "h": 4, "sources": [{"x": 2, "y": 0, "p": 1, "d": 2}], "flowers": [{"x": 1, "y": 3, "need": 1}], "splits": [], "blocks": [], "k": 1, "sol": [{"x": 2, "y": 3, "d": 3}], "tags": [], "nodes": 10, "greedy": true, "p0": 0, "title": "まげる", "tip": "点線の所から、指を矢印の向きへすべらせて石を置こう"}, {"w": 5, "h": 5, "sources": [{"x": 1, "y": 2, "p": 1, "d": 1}, {"x": 4, "y": 1, "p": 4, "d": 3}], "flowers": [{"x": 3, "y": 3, "need": 1}, {"x": 0, "y": 0, "need": 4}], "splits": [], "blocks": [], "k": 2, "sol": [{"x": 0, "y": 1, "d": 0}, {"x": 3, "y": 2, "d": 2}], "tags": [], "nodes": 257, "greedy": true, "p0": 0, "title": "ふたつ", "tip": "石は手持ちの数だけ。置いた石はなぞり直すと向きが変わり、タップで拾える"}, {"w": 5, "h": 5, "sources": [{"x": 2, "y": 0, "p": 1, "d": 2}, {"x": 4, "y": 1, "p": 4, "d": 3}], "flowers": [{"x": 3, "y": 2, "need": 5}], "splits": [], "blocks": [], "k": 1, "sol": [{"x": 2, "y": 2, "d": 1}], "tags": ["mix"], "nodes": 23, "greedy": true, "p0": 0, "title": "まぜる", "tip": "流れが交わると色が混ざる"}, {"w": 5, "h": 5, "sources": [{"x": 3, "y": 4, "p": 2, "d": 0}], "flowers": [{"x": 0, "y": 2, "need": 2}, {"x": 4, "y": 0, "need": 2}], "splits": [{"x": 3, "y": 0}], "blocks": [], "k": 1, "sol": [{"x": 0, "y": 0, "d": 2}], "tags": ["split"], "nodes": 19, "greedy": true, "p0": 1, "title": "わかれる", "tip": "とがった岩に当たると、流れは左右に分かれる"}, {"w": 5, "h": 5, "sources": [{"x": 0, "y": 4, "p": 2, "d": 0}, {"x": 0, "y": 0, "p": 4, "d": 2}], "flowers": [{"x": 1, "y": 2, "need": 6}], "splits": [], "blocks": [], "k": 1, "sol": [{"x": 0, "y": 2, "d": 1}], "tags": ["merge", "mix"], "nodes": 13, "greedy": true, "p0": 0, "title": "あわせる", "tip": "交わる所に石を置くと、ふたつの流れがひとつになる"}, {"w": 5, "h": 5, "sources": [{"x": 2, "y": 2, "p": 1, "d": 0}, {"x": 4, "y": 4, "p": 2, "d": 3}, {"x": 0, "y": 3, "p": 4, "d": 1}], "flowers": [{"x": 0, "y": 1, "need": 6}, {"x": 2, "y": 0, "need": 1}], "splits": [], "blocks": [{"x": 3, "y": 0}], "k": 2, "sol": [{"x": 1, "y": 4, "d": 0}, {"x": 1, "y": 1, "d": 3}], "tags": ["mix"], "nodes": 406, "greedy": false, "p0": 1, "title": "", "tip": "矢印の正面から来た流れは、石で止まる。良さそうな手が正解とは限らない"}, {"w": 5, "h": 5, "sources": [{"x": 4, "y": 4, "p": 1, "d": 3}, {"x": 3, "y": 0, "p": 2, "d": 3}, {"x": 2, "y": 1, "p": 4, "d": 3}], "flowers": [{"x": 4, "y": 2, "need": 6}, {"x": 0, "y": 4, "need": 1}], "splits": [], "blocks": [{"x": 0, "y": 2}], "k": 2, "sol": [{"x": 1, "y": 0, "d": 2}, {"x": 1, "y": 2, "d": 1}], "tags": ["mix"], "nodes": 318, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 5, "h": 5, "sources": [{"x": 2, "y": 0, "p": 1, "d": 3}, {"x": 4, "y": 4, "p": 2, "d": 0}, {"x": 2, "y": 3, "p": 4, "d": 3}], "flowers": [{"x": 0, "y": 1, "need": 3}, {"x": 0, "y": 3, "need": 4}], "splits": [], "blocks": [{"x": 2, "y": 4}], "k": 2, "sol": [{"x": 0, "y": 0, "d": 2}, {"x": 4, "y": 1, "d": 3}], "tags": ["mix"], "nodes": 258, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 5, "h": 5, "sources": [{"x": 4, "y": 0, "p": 1, "d": 2}, {"x": 0, "y": 1, "p": 4, "d": 1}], "flowers": [{"x": 3, "y": 2, "need": 5}, {"x": 1, "y": 0, "need": 5}, {"x": 1, "y": 4, "need": 1}], "splits": [{"x": 1, "y": 3}], "blocks": [{"x": 3, "y": 4}], "k": 2, "sol": [{"x": 3, "y": 1, "d": 2}, {"x": 4, "y": 3, "d": 3}], "tags": ["split", "mix"], "nodes": 271, "greedy": false, "p0": 0, "title": "", "tip": ""}, {"w": 5, "h": 5, "sources": [{"x": 2, "y": 3, "p": 1, "d": 0}, {"x": 3, "y": 1, "p": 4, "d": 2}], "flowers": [{"x": 0, "y": 2, "need": 5}, {"x": 0, "y": 0, "need": 5}, {"x": 3, "y": 4, "need": 5}], "splits": [{"x": 2, "y": 0}], "blocks": [{"x": 4, "y": 4}], "k": 2, "sol": [{"x": 4, "y": 0, "d": 2}, {"x": 4, "y": 2, "d": 3}], "tags": ["split", "mix"], "nodes": 255, "greedy": false, "p0": -2, "title": "", "tip": ""}, {"w": 5, "h": 5, "sources": [{"x": 1, "y": 2, "p": 1, "d": 2}, {"x": 3, "y": 3, "p": 4, "d": 0}], "flowers": [{"x": 2, "y": 0, "need": 5}, {"x": 0, "y": 4, "need": 1}, {"x": 0, "y": 1, "need": 5}], "splits": [{"x": 1, "y": 4}], "blocks": [{"x": 4, "y": 1}], "k": 2, "sol": [{"x": 3, "y": 1, "d": 3}, {"x": 2, "y": 4, "d": 0}], "tags": ["split", "mix"], "nodes": 247, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 6, "h": 6, "sources": [{"x": 3, "y": 5, "p": 1, "d": 0}, {"x": 2, "y": 2, "p": 2, "d": 3}, {"x": 0, "y": 4, "p": 4, "d": 1}], "flowers": [{"x": 4, "y": 1, "need": 5}, {"x": 0, "y": 2, "need": 2}, {"x": 1, "y": 5, "need": 5}], "splits": [], "blocks": [{"x": 4, "y": 0}], "k": 3, "sol": [{"x": 3, "y": 3, "d": 3}, {"x": 1, "y": 3, "d": 2}, {"x": 4, "y": 4, "d": 0}], "tags": ["mix"], "nodes": 7020, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 6, "h": 6, "sources": [{"x": 5, "y": 0, "p": 1, "d": 2}, {"x": 0, "y": 4, "p": 2, "d": 1}, {"x": 4, "y": 3, "p": 4, "d": 2}], "flowers": [{"x": 2, "y": 0, "need": 3}, {"x": 1, "y": 5, "need": 4}, {"x": 1, "y": 2, "need": 3}], "splits": [], "blocks": [{"x": 3, "y": 0}], "k": 3, "sol": [{"x": 5, "y": 2, "d": 3}, {"x": 2, "y": 4, "d": 0}, {"x": 4, "y": 5, "d": 3}], "tags": ["mix"], "nodes": 6946, "greedy": false, "p0": 0, "title": "", "tip": ""}, {"w": 6, "h": 6, "sources": [{"x": 4, "y": 2, "p": 1, "d": 0}, {"x": 3, "y": 5, "p": 2, "d": 0}, {"x": 2, "y": 2, "p": 4, "d": 2}], "flowers": [{"x": 5, "y": 3, "need": 6}, {"x": 4, "y": 0, "need": 1}, {"x": 5, "y": 5, "need": 6}], "splits": [], "blocks": [{"x": 5, "y": 0}], "k": 3, "sol": [{"x": 3, "y": 3, "d": 1}, {"x": 2, "y": 4, "d": 1}, {"x": 5, "y": 4, "d": 2}], "tags": ["mix"], "nodes": 5205, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 6, "h": 6, "sources": [{"x": 2, "y": 0, "p": 1, "d": 1}, {"x": 1, "y": 4, "p": 2, "d": 1}, {"x": 5, "y": 2, "p": 4, "d": 3}], "flowers": [{"x": 4, "y": 4, "need": 5}, {"x": 0, "y": 3, "need": 5}, {"x": 3, "y": 5, "need": 2}], "splits": [{"x": 3, "y": 4}], "blocks": [{"x": 5, "y": 1}, {"x": 1, "y": 5}], "k": 3, "sol": [{"x": 4, "y": 0, "d": 2}, {"x": 0, "y": 2, "d": 2}, {"x": 3, "y": 3, "d": 2}], "tags": ["stop", "split", "mix"], "nodes": 8697, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 6, "h": 6, "sources": [{"x": 4, "y": 2, "p": 1, "d": 2}, {"x": 1, "y": 4, "p": 2, "d": 1}, {"x": 4, "y": 1, "p": 4, "d": 3}], "flowers": [{"x": 5, "y": 4, "need": 3}, {"x": 0, "y": 3, "need": 3}, {"x": 1, "y": 1, "need": 4}], "splits": [{"x": 3, "y": 4}], "blocks": [{"x": 2, "y": 5}, {"x": 0, "y": 1}], "k": 3, "sol": [{"x": 3, "y": 3, "d": 3}, {"x": 3, "y": 5, "d": 0}, {"x": 4, "y": 5, "d": 3}], "tags": ["stop", "split", "mix"], "nodes": 6442, "greedy": false, "p0": -1, "title": "", "tip": ""}, {"w": 6, "h": 6, "sources": [{"x": 0, "y": 1, "p": 1, "d": 2}, {"x": 1, "y": 5, "p": 2, "d": 1}, {"x": 1, "y": 1, "p": 4, "d": 1}], "flowers": [{"x": 3, "y": 3, "need": 6}, {"x": 0, "y": 4, "need": 6}, {"x": 1, "y": 3, "need": 1}], "splits": [{"x": 4, "y": 1}], "blocks": [{"x": 2, "y": 3}, {"x": 4, "y": 5}], "k": 3, "sol": [{"x": 0, "y": 3, "d": 1}, {"x": 4, "y": 4, "d": 3}, {"x": 3, "y": 5, "d": 0}], "tags": ["split", "mix"], "nodes": 6074, "greedy": false, "p0": -1, "title": "", "tip": ""}, {"w": 6, "h": 6, "sources": [{"x": 3, "y": 5, "p": 1, "d": 3}, {"x": 5, "y": 4, "p": 2, "d": 0}, {"x": 1, "y": 0, "p": 4, "d": 2}, {"x": 4, "y": 4, "p": 2, "d": 0}], "flowers": [{"x": 2, "y": 3, "need": 6}, {"x": 2, "y": 1, "need": 6}, {"x": 4, "y": 1, "need": 2}, {"x": 0, "y": 1, "need": 1}], "splits": [{"x": 2, "y": 2}], "blocks": [{"x": 1, "y": 4}, {"x": 2, "y": 4}], "k": 3, "sol": [{"x": 1, "y": 2, "d": 1}, {"x": 5, "y": 2, "d": 3}, {"x": 0, "y": 5, "d": 0}], "tags": ["split", "mix"], "nodes": 8047, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 6, "h": 6, "sources": [{"x": 0, "y": 2, "p": 1, "d": 2}, {"x": 4, "y": 0, "p": 2, "d": 2}, {"x": 5, "y": 5, "p": 4, "d": 3}, {"x": 3, "y": 2, "p": 2, "d": 1}], "flowers": [{"x": 2, "y": 1, "need": 6}, {"x": 3, "y": 4, "need": 6}, {"x": 0, "y": 4, "need": 1}, {"x": 5, "y": 2, "need": 2}], "splits": [{"x": 2, "y": 5}], "blocks": [{"x": 5, "y": 1}, {"x": 3, "y": 1}], "k": 3, "sol": [{"x": 4, "y": 3, "d": 3}, {"x": 1, "y": 3, "d": 2}, {"x": 1, "y": 4, "d": 1}], "tags": ["split", "mix"], "nodes": 5916, "greedy": false, "p0": 3, "title": "", "tip": ""}, {"w": 7, "h": 7, "sources": [{"x": 1, "y": 5, "p": 1, "d": 1}, {"x": 1, "y": 2, "p": 2, "d": 2}, {"x": 3, "y": 1, "p": 4, "d": 2}], "flowers": [{"x": 0, "y": 3, "need": 7}, {"x": 2, "y": 0, "need": 5}, {"x": 0, "y": 6, "need": 1}, {"x": 6, "y": 3, "need": 4}], "splits": [{"x": 3, "y": 5}, {"x": 3, "y": 3}], "blocks": [{"x": 0, "y": 0}, {"x": 0, "y": 2}], "k": 3, "sol": [{"x": 3, "y": 4, "d": 3}, {"x": 2, "y": 4, "d": 0}, {"x": 3, "y": 6, "d": 3}], "tags": ["split", "mix"], "nodes": 7151, "greedy": false, "p0": 0, "title": "", "tip": ""}, {"w": 7, "h": 7, "sources": [{"x": 1, "y": 3, "p": 1, "d": 1}, {"x": 3, "y": 0, "p": 2, "d": 1}, {"x": 2, "y": 4, "p": 4, "d": 1}], "flowers": [{"x": 2, "y": 2, "need": 5}, {"x": 4, "y": 2, "need": 5}, {"x": 6, "y": 5, "need": 4}, {"x": 5, "y": 0, "need": 2}], "splits": [{"x": 3, "y": 2}, {"x": 5, "y": 4}], "blocks": [{"x": 5, "y": 2}, {"x": 0, "y": 3}], "k": 3, "sol": [{"x": 3, "y": 3, "d": 0}, {"x": 5, "y": 3, "d": 3}, {"x": 5, "y": 5, "d": 1}], "tags": ["merge", "split", "mix"], "nodes": 6876, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 7, "h": 7, "sources": [{"x": 5, "y": 1, "p": 1, "d": 3}, {"x": 1, "y": 3, "p": 2, "d": 2}, {"x": 5, "y": 5, "p": 4, "d": 0}], "flowers": [{"x": 4, "y": 3, "need": 6}, {"x": 6, "y": 4, "need": 6}, {"x": 1, "y": 1, "need": 1}, {"x": 0, "y": 6, "need": 2}], "splits": [{"x": 3, "y": 5}], "blocks": [{"x": 6, "y": 5}, {"x": 3, "y": 3}], "k": 4, "sol": [{"x": 5, "y": 3, "d": 3}, {"x": 1, "y": 5, "d": 1}, {"x": 3, "y": 4, "d": 1}, {"x": 3, "y": 6, "d": 3}], "tags": ["split", "mix"], "nodes": 69461, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 7, "h": 7, "sources": [{"x": 2, "y": 4, "p": 1, "d": 0}, {"x": 1, "y": 1, "p": 2, "d": 1}, {"x": 4, "y": 3, "p": 4, "d": 3}], "flowers": [{"x": 5, "y": 4, "need": 5}, {"x": 1, "y": 5, "need": 5}, {"x": 4, "y": 0, "need": 2}, {"x": 0, "y": 0, "need": 2}], "splits": [{"x": 3, "y": 0}], "blocks": [{"x": 4, "y": 1}, {"x": 6, "y": 0}], "k": 4, "sol": [{"x": 3, "y": 1, "d": 0}, {"x": 2, "y": 2, "d": 1}, {"x": 5, "y": 2, "d": 2}, {"x": 1, "y": 3, "d": 2}], "tags": ["split", "mix"], "nodes": 50330, "greedy": false, "p0": 0, "title": "", "tip": ""}, {"w": 7, "h": 7, "sources": [{"x": 5, "y": 6, "p": 1, "d": 0}, {"x": 2, "y": 3, "p": 2, "d": 1}, {"x": 4, "y": 0, "p": 4, "d": 3}], "flowers": [{"x": 3, "y": 4, "need": 3}, {"x": 4, "y": 5, "need": 3}, {"x": 6, "y": 1, "need": 1}, {"x": 2, "y": 1, "need": 4}], "splits": [{"x": 6, "y": 3}], "blocks": [{"x": 6, "y": 5}, {"x": 0, "y": 5}], "k": 4, "sol": [{"x": 2, "y": 0, "d": 2}, {"x": 4, "y": 3, "d": 2}, {"x": 5, "y": 3, "d": 1}, {"x": 6, "y": 4, "d": 3}], "tags": ["split", "mix"], "nodes": 214804, "greedy": false, "p0": -1, "title": "", "tip": ""}, {"w": 7, "h": 7, "sources": [{"x": 0, "y": 5, "p": 1, "d": 1}, {"x": 0, "y": 4, "p": 2, "d": 1}, {"x": 4, "y": 4, "p": 4, "d": 1}], "flowers": [{"x": 3, "y": 2, "need": 3}, {"x": 6, "y": 5, "need": 3}, {"x": 1, "y": 3, "need": 2}, {"x": 6, "y": 2, "need": 4}], "splits": [{"x": 2, "y": 4}], "blocks": [{"x": 1, "y": 6}, {"x": 4, "y": 3}], "k": 4, "sol": [{"x": 2, "y": 3, "d": 3}, {"x": 6, "y": 4, "d": 0}, {"x": 2, "y": 6, "d": 1}, {"x": 3, "y": 6, "d": 0}], "tags": ["split", "mix"], "nodes": 174508, "greedy": false, "p0": 1, "title": "", "tip": ""}, {"w": 7, "h": 7, "sources": [{"x": 4, "y": 1, "p": 1, "d": 2}, {"x": 1, "y": 4, "p": 2, "d": 0}, {"x": 5, "y": 3, "p": 4, "d": 2}], "flowers": [{"x": 5, "y": 5, "need": 5}, {"x": 6, "y": 6, "need": 5}, {"x": 3, "y": 3, "need": 5}, {"x": 2, "y": 6, "need": 2}, {"x": 2, "y": 1, "need": 2}], "splits": [{"x": 2, "y": 2}, {"x": 6, "y": 4}], "blocks": [{"x": 0, "y": 5}, {"x": 3, "y": 1}, {"x": 3, "y": 6}], "k": 4, "sol": [{"x": 1, "y": 2, "d": 1}, {"x": 4, "y": 4, "d": 1}, {"x": 6, "y": 2, "d": 3}, {"x": 3, "y": 2, "d": 2}], "tags": ["split", "mix"], "nodes": 88927, "greedy": false, "p0": -1, "title": "", "tip": ""}, {"w": 7, "h": 7, "sources": [{"x": 5, "y": 6, "p": 1, "d": 0}, {"x": 6, "y": 5, "p": 2, "d": 3}, {"x": 6, "y": 4, "p": 4, "d": 3}], "flowers": [{"x": 4, "y": 3, "need": 7}, {"x": 1, "y": 2, "need": 7}, {"x": 4, "y": 5, "need": 3}, {"x": 1, "y": 5, "need": 7}, {"x": 2, "y": 6, "need": 7}], "splits": [{"x": 1, "y": 4}, {"x": 2, "y": 5}], "blocks": [{"x": 2, "y": 0}, {"x": 3, "y": 3}, {"x": 1, "y": 1}], "k": 4, "sol": [{"x": 5, "y": 3, "d": 3}, {"x": 3, "y": 4, "d": 2}, {"x": 3, "y": 5, "d": 3}, {"x": 2, "y": 4, "d": 3}], "tags": ["split", "mix"], "nodes": 60474, "greedy": false, "p0": 3, "title": "", "tip": ""}, {"w": 8, "h": 8, "sources": [{"x": 5, "y": 4, "p": 1, "d": 2}, {"x": 0, "y": 6, "p": 2, "d": 0}, {"x": 1, "y": 5, "p": 4, "d": 1}, {"x": 7, "y": 0, "p": 2, "d": 2}], "flowers": [{"x": 7, "y": 6, "need": 5}, {"x": 5, "y": 7, "need": 5}, {"x": 2, "y": 4, "need": 6}, {"x": 4, "y": 3, "need": 2}, {"x": 2, "y": 7, "need": 4}], "splits": [{"x": 3, "y": 5}, {"x": 3, "y": 6}], "blocks": [{"x": 3, "y": 3}, {"x": 5, "y": 1}, {"x": 7, "y": 4}], "k": 4, "sol": [{"x": 7, "y": 3, "d": 3}, {"x": 0, "y": 4, "d": 1}, {"x": 3, "y": 4, "d": 3}, {"x": 2, "y": 6, "d": 2}], "tags": ["split", "mix"], "nodes": 475812, "greedy": false, "p0": 2, "title": "", "tip": ""}, {"w": 8, "h": 8, "sources": [{"x": 6, "y": 3, "p": 1, "d": 3}, {"x": 0, "y": 4, "p": 2, "d": 2}, {"x": 7, "y": 6, "p": 4, "d": 3}, {"x": 4, "y": 2, "p": 2, "d": 2}], "flowers": [{"x": 6, "y": 0, "need": 7}, {"x": 4, "y": 0, "need": 7}, {"x": 0, "y": 1, "need": 7}, {"x": 4, "y": 5, "need": 3}, {"x": 2, "y": 6, "need": 2}], "splits": [{"x": 3, "y": 1}, {"x": 0, "y": 6}], "blocks": [{"x": 1, "y": 2}, {"x": 1, "y": 5}, {"x": 0, "y": 2}], "k": 4, "sol": [{"x": 2, "y": 3, "d": 0}, {"x": 2, "y": 0, "d": 1}, {"x": 3, "y": 6, "d": 0}, {"x": 6, "y": 1, "d": 0}], "tags": ["split", "mix"], "nodes": 244972, "greedy": false, "p0": 0, "title": "", "tip": ""}, {"w": 8, "h": 8, "sources": [{"x": 2, "y": 0, "p": 1, "d": 2}, {"x": 3, "y": 5, "p": 2, "d": 3}, {"x": 3, "y": 1, "p": 4, "d": 2}, {"x": 7, "y": 2, "p": 2, "d": 3}], "flowers": [{"x": 2, "y": 6, "need": 7}, {"x": 4, "y": 4, "need": 7}, {"x": 0, "y": 0, "need": 7}, {"x": 5, "y": 2, "need": 2}, {"x": 0, "y": 3, "need": 7}], "splits": [{"x": 1, "y": 5}, {"x": 0, "y": 1}], "blocks": [{"x": 4, "y": 7}, {"x": 5, "y": 4}, {"x": 1, "y": 6}], "k": 4, "sol": [{"x": 1, "y": 1, "d": 3}, {"x": 0, "y": 2, "d": 1}, {"x": 4, "y": 2, "d": 2}, {"x": 3, "y": 3, "d": 3}], "tags": ["split", "mix"], "nodes": 216485, "greedy": false, "p0": 0, "title": "", "tip": ""}];
+(function(){
+"use strict";
+// ---- 調整用の数値(手触りはここで決まる) ----
+var PARAM = {
+  flowSpeed: 13,        // 流れが伸びる速さ(マス/秒)
+  hitStopBloom: 0.075,  // 花が咲いた瞬間に止める秒数
+  hitStopClear: 0.14,   // 全部咲いた瞬間に止める秒数
+  shakeBloom: 0.05,     // 咲いた時の揺れ(マス)
+  shakeClear: 0.11,
+  swipeMin: 0.2,        // なぞりと判定する距離(マス)
+  stonePop: 1.7,        // 置いた瞬間の石の大きさ(倍)
+  spring: 0.26, damp: 0.62,  // 石の回転・花の開きのばね
+  clearPanelDelay: 0.95
+};
+var COL = {1:"#d9434e",2:"#f2b632",4:"#2f74d0",3:"#ee7f34",6:"#3fa565",5:"#8b55c9",7:"#5b4a3f"};
+var cv = document.getElementById("cv"), ctx = cv.getContext("2d"), board = document.getElementById("board");
+function $(id){ return document.getElementById(id); }
+var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ---- 音(その場で合成) ----
+var AC = null, master = null, soundOn = true, noiseBuf = null;
+function audio(){
+  if (AC || !soundOn) return;
+  try { var A = window.AudioContext || window.webkitAudioContext; AC = new A(); master = AC.createGain(); master.gain.value = .5; master.connect(AC.destination);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate); var d = noiseBuf.getChannelData(0); for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; } catch (e) { AC = null; }
+}
+function tone(type, f0, f1, dur, vol, delay){
+  if (!AC || !soundOn) return; var t = AC.currentTime + (delay || 0), o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + .02);
+}
+function noise(f0, f1, dur, vol, delay){
+  if (!AC || !soundOn) return; var t = AC.currentTime + (delay || 0), s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  s.buffer = noiseBuf; s.loop = true; f.type = "bandpass"; f.Q.value = 1.4; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + dur + .05);
+}
+function bell(freq, vol, delay){ tone("sine", freq, freq, .9, vol, delay); tone("sine", freq * 2.01, freq * 2.01, .5, vol * .35, delay); tone("triangle", freq * 3.0, freq * 3.0, .22, vol * .18, delay); }
+var SCALE = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.7, 1318.5];
+var SFX = {
+  place: function(){ tone("sine", 620, 240, .11, .5); noise(1800, 500, .07, .16); },
+  turn: function(){ tone("triangle", 300, 720, .08, .32); noise(900, 2600, .06, .1); },
+  remove: function(){ tone("sine", 360, 170, .09, .3); },
+  deny: function(){ tone("square", 120, 90, .1, .14); },
+  flow: function(len){ noise(500, 1900, Math.min(.9, .12 + len * .05), .11); },
+  bloom: function(i){ bell(SCALE[Math.min(i, SCALE.length - 1)], .34); noise(3000, 6000, .12, .06); },
+  wrong: function(){ tone("sine", 210, 140, .18, .3); },
+  clear: function(){ [0, 2, 4, 5, 7].forEach(function(n, i){ bell(SCALE[n], .3, .12 + i * .085); }); noise(2500, 7000, .7, .07, .12); }
+};
+
+// ---- 状態 ----
+var cur = 0, L = null, P = null, stones = [], undoStack = [], sim = null, won = false, winAt = -1, panelShown = false;
+var clk = 0, hitStop = 0, shake = 0, flowT0 = 0, d0 = 1e9, events = [], flowers = [], parts = [], bloomCount = 0, hintGhost = null, drag = null, lastNow = 0;
+var store = {};
+try { store = JSON.parse(localStorage.getItem("ironagashi2") || "{}"); } catch (e) { store = {}; }
+function save(){ try { localStorage.setItem("ironagashi2", JSON.stringify(store)); } catch (e) {} }
+
+function stoneArr(){ var a = new Int8Array(L.w * L.h).fill(-1); stones.forEach(function(s){ a[s.c] = s.d; }); return a; }
+function status(r, k){ return r.recv[k] === L.flowers[k].need ? 1 : (r.recv[k] ? 2 : 0); }
+function load(i){
+  cur = Math.max(0, Math.min(LEVELS.length - 1, i)); L = LEVELS[cur]; P = Core.prep(L);
+  stones = []; undoStack = []; won = false; winAt = -1; panelShown = false; events = []; parts = []; bloomCount = 0; hintGhost = null; drag = null;
+  sim = Core.simulate(L, P, stoneArr()); flowT0 = clk; d0 = 0;
+  flowers = L.flowers.map(function(f, k){ return {st:0, recv:0, open:0, vel:0, shakeT:-9, pop:0}; });
+  schedule(null); $("done").classList.remove("on"); board.classList.remove("glow"); ui();
+}
+// 流れの変化を調べ、どこから流れ直すか・花にいつ届くかを決める
+function schedule(old){
+  var n = L.w * L.h, first = 1e9, c, d;
+  if (!old) first = 0;
+  else for (c = 0; c < n; c++){
+    if (sim.out[c] !== old.out[c] || sim.color[c] !== old.color[c]){ if (sim.depth[c] >= 0 && sim.depth[c] < first) first = sim.depth[c]; }
+  }
+  d0 = first; flowT0 = clk; events = [];
+  var maxDepth = 0; for (c = 0; c < n; c++) if (sim.depth[c] > maxDepth) maxDepth = sim.depth[c];
+  L.flowers.forEach(function(f, k){
+    var st = status(sim, k), fl = flowers[k], cell = f.y * L.w + f.x;
+    if (st === fl.st && sim.recv[k] === fl.recv) return;
+    if (!sim.recv[k]){ fl.st = 0; fl.recv = 0; return; }
+    var t = sim.depth[cell] >= d0 && first < 1e9 ? (sim.depth[cell] - d0) / PARAM.flowSpeed : 0;
+    events.push({t:flowT0 + (reduce ? 0 : t), k:k, st:st, recv:sim.recv[k]});
+  });
+  events.sort(function(a, b){ return a.t - b.t; });
+  if (first < 1e9 && old) SFX.flow(maxDepth - first);
+}
+function apply(change){
+  if (won) return; var old = sim; undoStack.push(stones.map(function(s){ return {c:s.c, d:s.d}; })); if (undoStack.length > 60) undoStack.shift();
+  change(); sim = Core.simulate(L, P, stoneArr()); bloomCount = 0; schedule(old); ui();
+}
+function ui(){
+  $("lv").innerHTML = "第 " + (cur + 1) + " 面 / " + LEVELS.length + (L.title ? "<b>" + L.title + "</b>" : "");
+  $("tip").textContent = L.tip || "";
+  var inv = $("inv"); inv.innerHTML = "";
+  for (var i = 0; i < L.k; i++){ var e = document.createElement("i"); if (i < stones.length) e.className = "used"; inv.appendChild(e); }
+  var nb = document.createElement("b"); nb.textContent = "残り " + (L.k - stones.length); inv.appendChild(nb);
+  $("undo").disabled = !undoStack.length || won; $("hint").disabled = won;
+  Array.prototype.forEach.call($("levels").children, function(b, i){ b.setAttribute("aria-current", i === cur ? "true" : "false"); b.className = store[i] ? "cleared" : ""; });
+}
+LEVELS.forEach(function(_, i){
+  var b = document.createElement("button"); b.type = "button"; b.id = "level-" + (i + 1); b.textContent = i + 1;
+  b.setAttribute("aria-label", "第" + (i + 1) + "面"); b.addEventListener("click", function(){ audio(); load(i); }); $("levels").appendChild(b);
+});
+$("nextBig").addEventListener("click", function(){ load(cur + 1 < LEVELS.length ? cur + 1 : 0); });
+$("reset").addEventListener("click", function(){ audio(); SFX.remove(); load(cur); });
+$("undo").addEventListener("click", function(){ if (!undoStack.length || won) return; audio(); var old = sim, prev = undoStack.pop();
+  stones = prev.map(function(s){ return mk(s.c, s.d, false); }); sim = Core.simulate(L, P, stoneArr()); schedule(old); SFX.remove(); ui(); });
+$("hint").addEventListener("click", function(){ audio(); var w = L.w, miss = L.sol.filter(function(s){ return !stones.some(function(t){ return t.c === s.y * w + s.x && t.d === s.d; }); });
+  if (miss.length){ hintGhost = {c:miss[0].y * w + miss[0].x, d:miss[0].d, t:clk}; SFX.turn(); } });
+$("sound").addEventListener("click", function(){ soundOn = !soundOn; this.setAttribute("aria-pressed", soundOn ? "true" : "false"); this.textContent = soundOn ? "音 入" : "音 切"; if (soundOn){ audio(); SFX.place(); } });
+$("share").addEventListener("click", function(){
+  var text = "いろながし 第" + (cur + 1) + "面" + (L.title ? "「" + L.title + "」" : "") + "を解いた(" + Object.keys(store).length + " / " + LEVELS.length + " 面)", b = $("share");
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function(){ b.textContent = "コピーしました"; }, function(){ b.textContent = text; });
+  else b.textContent = text;
+});
+function mk(c, d, fresh){ return {c:c, d:d, ang:d * Math.PI / 2 - (fresh ? 1.6 : 0), av:0, sc:fresh ? PARAM.stonePop : 1}; }
+function place(c, d){
+  var s = stones.filter(function(t){ return t.c === c; })[0];
+  if (s){ if (s.d === d) return; apply(function(){ s.d = d; s.sc = 1.25; }); SFX.turn(); ring(c, "#27363e"); return; }
+  if (P.type[c] !== 0) return;
+  if (stones.length >= L.k){ deny(); return; }
+  apply(function(){ stones.push(mk(c, d, true)); }); SFX.place(); ring(c, "#27363e"); splash(c, 6, "#ffffff");
+  try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+}
+function removeAt(c){ var i = stones.findIndex(function(t){ return t.c === c; }); if (i < 0) return false; apply(function(){ stones.splice(i, 1); }); SFX.remove(); ring(c, "#8c9aa1"); return true; }
+function deny(){ SFX.deny(); var e = $("inv"); e.classList.remove("deny"); void e.offsetWidth; e.classList.add("deny"); shake = Math.max(shake, .03); }
+
+// ---- 入力:なぞって置く・向きを変える、タップで拾う ----
+function cellAt(e){ var r = cv.getBoundingClientRect(), g = geom(), px = (e.clientX - r.left) * g.dpr, py = (e.clientY - r.top) * g.dpr;
+  var x = Math.floor((px - g.ox) / g.cs), y = Math.floor((py - g.oy) / g.cs); return {x:x, y:y, px:px, py:py, ok:x >= 0 && y >= 0 && x < L.w && y < L.h, g:g}; }
+cv.addEventListener("pointerdown", function(e){ audio(); if (AC && AC.state === "suspended") AC.resume();
+  if (won){ return; } var a = cellAt(e); if (!a.ok) return; try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+  drag = {c:a.y * L.w + a.x, px:a.px, py:a.py, d:-1}; e.preventDefault(); });
+cv.addEventListener("pointermove", function(e){ if (!drag) return; var a = cellAt(e), dx = a.px - drag.px, dy = a.py - drag.py;
+  var nd = Math.hypot(dx, dy) < a.g.cs * PARAM.swipeMin ? -1 : (Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
+  if (nd !== drag.d && nd >= 0 && P.type[drag.c] === 0) tone("sine", 900, 900, .025, .08); drag.d = nd; });
+function endDrag(){ if (!drag) return; var c = drag.c, d = drag.d; drag = null;
+  if (P.type[c] !== 0){ ring(c, "#8c9aa1"); return; }
+  if (d >= 0) place(c, d); else if (!removeAt(c)){ ring(c, "#8c9aa1"); if (cur === 0) $("tip").textContent = "タップではなく、置きたい向きへ指をすべらせる"; } }
+cv.addEventListener("pointerup", endDrag); cv.addEventListener("pointercancel", function(){ drag = null; });
+
+// ---- 演出の部品 ----
+function ring(c, col){ parts.push({k:"ring", c:c, t:0, life:.32, col:col}); }
+function splash(c, n, col){ for (var i = 0; i < n; i++){ var a = Math.random() * 6.28, v = .8 + Math.random() * 1.6; parts.push({k:"dot", c:c, x:0, y:0, vx:Math.cos(a) * v, vy:Math.sin(a) * v, t:0, life:.3 + Math.random() * .2, col:col, r:.05}); } }
+function petals(c, n, col){ for (var i = 0; i < n; i++){ var a = i / n * 6.28 + Math.random() * .4, v = 1.6 + Math.random() * 1.8;
+  parts.push({k:"petal", c:c, x:0, y:0, vx:Math.cos(a) * v, vy:Math.sin(a) * v - .6, g:2.6, t:0, life:.55 + Math.random() * .35, col:col, r:.085 + Math.random() * .04, rot:Math.random() * 6.28, vr:(Math.random() - .5) * 14}); } }
+function confetti(){ var cols = L.flowers.map(function(f){ return COL[f.need]; }); for (var i = 0; i < 46; i++)
+  parts.push({k:"petal", abs:true, x:Math.random() * L.w, y:-Math.random() * 2.5 - .3, vx:(Math.random() - .5) * 1.2, vy:2.2 + Math.random() * 2.4, g:1.2, t:0, life:1.5 + Math.random() * .8, col:cols[i % cols.length], r:.09 + Math.random() * .05, rot:Math.random() * 6.28, vr:(Math.random() - .5) * 10}); }
+function fire(ev){
+  var fl = flowers[ev.k], f = L.flowers[ev.k], c = f.y * L.w + f.x; fl.st = ev.st; fl.recv = ev.recv;
+  if (ev.st === 1){ fl.vel += .5; hitStop = Math.max(hitStop, PARAM.hitStopBloom); shake = Math.max(shake, PARAM.shakeBloom);
+    petals(c, 9, COL[f.need]); ring(c, COL[f.need]); parts.push({k:"flash", c:c, t:0, life:.22, col:"#ffffff"}); SFX.bloom(bloomCount++);
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {} }
+  else { fl.shakeT = clk; SFX.wrong(); splash(c, 5, COL[ev.recv]); }
+}
+function win(){
+  won = true; winAt = clk; store[cur] = 1; save(); hitStop = Math.max(hitStop, PARAM.hitStopClear); shake = Math.max(shake, PARAM.shakeClear);
+  SFX.clear(); confetti(); board.classList.remove("glow"); void board.offsetWidth; board.classList.add("glow");
+  L.flowers.forEach(function(f, k){ flowers[k].vel += .35; });
+  $("doneTitle").textContent = cur === LEVELS.length - 1 ? "ぜんぶ咲きました" : "咲きました";
+  $("nextBig").textContent = cur === LEVELS.length - 1 ? "最初から" : "次の面へ"; $("share").textContent = "結果をコピー"; ui();
+}
+
+// ---- 描画 ----
+function geom(){
+  var dpr = Math.min(window.devicePixelRatio || 1, 2.5), W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
+  if (cv.width !== W || cv.height !== H){ cv.width = W; cv.height = H; }
+  var pad = W * 0.04, cs = Math.min((W - pad * 2) / L.w, (H - pad * 2) / L.h);
+  return {dpr:dpr, W:W, H:H, cs:cs, ox:(W - cs * L.w) / 2, oy:(H - cs * L.h) / 2};
+}
+function xy(g, c){ var x = c % L.w, y = (c - x) / L.w; return [g.ox + (x + .5) * g.cs, g.oy + (y + .5) * g.cs]; }
+function rgba(hex, a){ var n = parseInt(hex.slice(1), 16); return "rgba(" + (n >> 16) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")"; }
+function prog(depth){ if (reduce || depth < d0) return 1; return Math.max(0, Math.min(1, (clk - flowT0) * PARAM.flowSpeed - (depth - d0))); }
+function segs(g, st){
+  var out = [];
+  for (var c = 0; c < L.w * L.h; c++) for (var d = 0; d < 4; d++){
+    if (!(sim.out[c] & (1 << d))) continue;
+    var p = prog(sim.depth[c]); if (p <= 0) continue;
+    var x = c % L.w, y = (c - x) / L.w, nx = x + Core.DX[d], ny = y + Core.DY[d], a = xy(g, c), col = sim.color[c], col2 = col, len = 1, fade = false;
+    if (nx < 0 || ny < 0 || nx >= L.w || ny >= L.h){ len = .5; fade = true; }
+    else { var m = ny * L.w + nx, t = P.type[m];
+      if (t === 0){ if (st[m] >= 0 && st[m] === ((d + 2) & 3)) len = .6; else col2 = sim.color[m]; }
+      else if (t === 3) col2 = sim.color[m]; else if (t === 2) len = .8; else len = .6; }
+    out.push({x1:a[0], y1:a[1], x2:a[0] + Core.DX[d] * g.cs * len * p, y2:a[1] + Core.DY[d] * g.cs * len * p, c1:COL[col], c2:COL[col2], fade:fade && p >= 1, tip:p < 1, d:d});
+  }
+  return out;
+}
+function arrow(x, y, cs, ang, col, alpha){
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.globalAlpha = alpha; ctx.fillStyle = col;
+  ctx.beginPath(); ctx.moveTo(0, -cs * .25); ctx.lineTo(cs * .18, cs * .02); ctx.lineTo(cs * .07, cs * .02); ctx.lineTo(cs * .07, cs * .2);
+  ctx.lineTo(-cs * .07, cs * .2); ctx.lineTo(-cs * .07, cs * .02); ctx.lineTo(-cs * .18, cs * .02); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function stoneShape(x, y, cs, sc, ang, ringCol, arrowCol, alpha){
+  ctx.globalAlpha = alpha; ctx.fillStyle = "rgba(39,54,62,.18)"; ctx.beginPath(); ctx.arc(x, y + cs * .04 * sc, cs * .37 * sc, 0, 7); ctx.fill();
+  ctx.fillStyle = "#fbfbf8"; ctx.beginPath(); ctx.arc(x, y, cs * .36 * sc, 0, 7); ctx.fill();
+  ctx.strokeStyle = ringCol; ctx.lineWidth = cs * .05 * sc; ctx.beginPath(); ctx.arc(x, y, cs * .36 * sc, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+  arrow(x, y, cs * sc, ang, arrowCol, alpha);
+}
+function flowerShape(x, y, cs, f, fl, t, k){
+  var need = COL[f.need], o = Math.max(0, fl.open), wob = fl.shakeT > 0 ? Math.sin((clk - fl.shakeT) * 46) * Math.max(0, .22 - (clk - fl.shakeT)) * cs * .5 : 0;
+  x += wob;
+  if (o < .35){ // つぼみ
+    var b = 1 - o / .35, r = cs * .2;
+    ctx.globalAlpha = b; ctx.strokeStyle = "#5f9a6b"; ctx.lineWidth = cs * .04; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x, y + r * 1.5); ctx.lineTo(x, y + r * .5); ctx.stroke();
+    ctx.fillStyle = "#6aa877"; ctx.beginPath(); ctx.ellipse(x + r * .55, y + r * 1.15, r * .5, r * .22, -.6, 0, 7); ctx.fill();
+    ctx.fillStyle = rgba(need, .30); ctx.strokeStyle = need; ctx.lineWidth = cs * .045;
+    ctx.beginPath(); ctx.moveTo(x, y - r * 1.25); ctx.bezierCurveTo(x + r * 1.15, y - r * .3, x + r * .8, y + r * .75, x, y + r * .75);
+    ctx.bezierCurveTo(x - r * .8, y + r * .75, x - r * 1.15, y - r * .3, x, y - r * 1.25); ctx.fill(); ctx.stroke();
+    if (fl.st === 2){ ctx.fillStyle = COL[fl.recv]; ctx.beginPath(); ctx.arc(x, y - r * .05, r * .34, 0, 7); ctx.fill(); ctx.strokeStyle = "#27363e"; ctx.lineWidth = cs * .02; ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+  if (o > .05){ // 花
+    var R = cs * .46 * Math.min(o, 1.35), rot = o * 1.2 + (won ? Math.sin(t * 1.6 + k) * .07 : 0);
+    for (var i = 0; i < 5; i++){ ctx.save(); ctx.translate(x, y); ctx.rotate(rot + i * Math.PI * 2 / 5);
+      ctx.beginPath(); ctx.ellipse(0, -R * .56, R * .31, R * .47, 0, 0, Math.PI * 2); ctx.fillStyle = need; ctx.fill();
+      ctx.strokeStyle = "rgba(39,54,62,.28)"; ctx.lineWidth = cs * .02; ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,.28)"; ctx.beginPath(); ctx.ellipse(-R * .08, -R * .66, R * .1, R * .22, 0, 0, 7); ctx.fill(); ctx.restore(); }
+    ctx.fillStyle = "#fff6c9"; ctx.beginPath(); ctx.arc(x, y, R * .2, 0, 7); ctx.fill(); ctx.strokeStyle = "rgba(39,54,62,.3)"; ctx.lineWidth = cs * .02; ctx.stroke();
+  }
+  var ps = [1, 2, 4].filter(function(p){ return f.need & p; });
+  if (ps.length > 1 && o < .5) ps.forEach(function(p, j){ ctx.fillStyle = COL[p]; ctx.beginPath(); ctx.arc(x - wob + (j - (ps.length - 1) / 2) * cs * .13, y + cs * .43, cs * .045, 0, 7); ctx.fill(); });
+}
+function draw(now){
+  requestAnimationFrame(draw);
+  var dt = Math.min(.05, (now - lastNow) / 1000 || .016); lastNow = now;
+  if (!L) return;
+  if (hitStop > 0) hitStop -= dt; else clk += dt;
+  var t = clk, g = geom(), cs = g.cs, i, st = stoneArr();
+  while (events.length && events[0].t <= clk) fire(events.shift());
+  if (!won && sim.win && !events.length) win();
+  if (won && !panelShown && clk - winAt > PARAM.clearPanelDelay){ panelShown = true; $("done").classList.add("on"); }
+  shake *= Math.pow(.0009, dt); var sx = reduce ? 0 : (Math.random() - .5) * 2 * shake * cs, sy = reduce ? 0 : (Math.random() - .5) * 2 * shake * cs;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, g.W, g.H); ctx.translate(sx, sy);
+  // 升目の目印
+  ctx.fillStyle = "rgba(39,54,62,.13)";
+  for (var c = 0; c < L.w * L.h; c++){ if (P.type[c] || st[c] >= 0) continue; var p = xy(g, c); ctx.beginPath(); ctx.arc(p[0], p[1], cs * .035, 0, 7); ctx.fill(); }
+  // 流れ
+  var S = segs(g, st); ctx.lineCap = "round";
+  [[.50, .22], [.30, .9]].forEach(function(wa){ S.forEach(function(s){
+    var gr = ctx.createLinearGradient(s.x1, s.y1, s.x1 + (s.d === 1 ? cs : s.d === 3 ? -cs : 0), s.y1 + (s.d === 2 ? cs : s.d === 0 ? -cs : 0));
+    gr.addColorStop(0, rgba(s.c1, wa[1])); gr.addColorStop(.45, rgba(s.c1, wa[1])); gr.addColorStop(1, rgba(s.c2, wa[1]));
+    ctx.strokeStyle = s.fade ? (function(){ var q = ctx.createLinearGradient(s.x1, s.y1, s.x2, s.y2); q.addColorStop(0, rgba(s.c1, wa[1])); q.addColorStop(1, rgba(s.c1, 0)); return q; })() : gr;
+    ctx.lineWidth = cs * wa[0]; ctx.beginPath(); ctx.moveTo(s.x1, s.y1); ctx.lineTo(s.x2, s.y2); ctx.stroke(); }); });
+  ctx.setLineDash([cs * .10, cs * .30]); ctx.lineDashOffset = -t * cs * .7; ctx.lineWidth = cs * .07; ctx.strokeStyle = "rgba(255,255,255,.6)";
+  S.forEach(function(s){ ctx.beginPath(); ctx.moveTo(s.x1, s.y1); ctx.lineTo(s.x2, s.y2); ctx.stroke(); }); ctx.setLineDash([]);
+  S.forEach(function(s){ if (!s.tip) return; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(s.x2, s.y2, cs * .13, 0, 7); ctx.fill(); ctx.fillStyle = s.c1; ctx.beginPath(); ctx.arc(s.x2, s.y2, cs * .085, 0, 7); ctx.fill(); });
+  // 黒い岩
+  (L.blocks || []).forEach(function(b){ var x = g.ox + (b.x + .5) * cs, y = g.oy + (b.y + .5) * cs;
+    ctx.fillStyle = "#3b464c"; ctx.beginPath(); ctx.roundRect(x - cs * .31, y - cs * .31, cs * .62, cs * .62, cs * .17); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.14)"; ctx.beginPath(); ctx.roundRect(x - cs * .22, y - cs * .24, cs * .3, cs * .16, cs * .08); ctx.fill(); });
+  // 分かれ岩:当たっている時は、分かれる2方向の印が光る
+  (L.splits || []).forEach(function(b){ var c = b.y * L.w + b.x, x = g.ox + (b.x + .5) * cs, y = g.oy + (b.y + .5) * cs, r = cs * .36, live = prog(sim.depth[c]) >= .5 ? sim.out[c] : 0;
+    ctx.fillStyle = "#6f7c84"; ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.22)"; ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(39,54,62,.18)"; ctx.beginPath(); ctx.moveTo(x, y + r); ctx.lineTo(x - r, y); ctx.lineTo(x, y); ctx.closePath(); ctx.fill();
+    for (var d = 0; d < 4; d++){ var on = live & (1 << d); ctx.save(); ctx.translate(x, y); ctx.rotate(d * Math.PI / 2);
+      ctx.fillStyle = on ? "#ffffff" : "rgba(255,255,255,.38)"; var s = on ? 1.25 + Math.sin(t * 7) * .12 : 1;
+      ctx.beginPath(); ctx.moveTo(0, -r * .86 * s); ctx.lineTo(r * .2 * s, -r * .5); ctx.lineTo(-r * .2 * s, -r * .5); ctx.closePath(); ctx.fill(); ctx.restore(); } });
+  // 泉
+  L.sources.forEach(function(s){ var x = g.ox + (s.x + .5) * cs, y = g.oy + (s.y + .5) * cs, pul = 1 + Math.sin(t * 2.4 + s.x) * .05;
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, cs * .34, 0, 7); ctx.fill();
+    ctx.fillStyle = COL[s.p]; ctx.beginPath(); ctx.arc(x, y, cs * .25 * pul, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.4)"; ctx.beginPath(); ctx.arc(x - cs * .08, y - cs * .09, cs * .07, 0, 7); ctx.fill();
+    ctx.strokeStyle = COL[s.p]; ctx.lineWidth = cs * .04; ctx.beginPath(); ctx.arc(x, y, cs * .34, 0, 7); ctx.stroke(); });
+  // ヒント
+  if (hintGhost){ var ht = clk - hintGhost.t; if (ht > 3) hintGhost = null; else { var hp = xy(g, hintGhost.c), ha = (.35 + .25 * Math.sin(ht * 9)) * Math.min(1, 3 - ht);
+    stoneShape(hp[0], hp[1], cs, 1, hintGhost.d * Math.PI / 2, "#f2b632", "#f2b632", ha * 1.6); } }
+  // 矢印石(ばねで回り、置いた瞬間は大きい)
+  stones.forEach(function(s){
+    var target = s.d * Math.PI / 2, d = target - s.ang; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+    if (reduce){ s.ang = target; s.sc = 1; } else { s.av = s.av * PARAM.damp + d * PARAM.spring; s.ang += s.av; s.sc += (1 - s.sc) * .22; }
+    var p = xy(g, s.c), col = prog(sim.depth[s.c]) > 0 ? sim.color[s.c] : 0;
+    stoneShape(p[0], p[1], cs, s.sc, s.ang, col ? COL[col] : "#8c9aa1", col ? COL[col] : "#27363e", 1);
+  });
+  // 練習面の案内
+  if (cur < 2 && !won && !drag){ var miss = L.sol.filter(function(s){ return !stones.some(function(o){ return o.c === s.y * L.w + s.x && o.d === s.d; }); })[0];
+    if (miss){ var gc = miss.y * L.w + miss.x, gp = xy(g, gc), ph = (t % 1.8) / 1.8, pul = 1 + Math.sin(t * 5) * .08;
+      ctx.strokeStyle = "rgba(39,54,62,.75)"; ctx.lineWidth = cs * .045; ctx.setLineDash([cs * .1, cs * .08]); ctx.lineDashOffset = -t * cs * .3;
+      ctx.beginPath(); ctx.arc(gp[0], gp[1], cs * .42 * pul, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      var gdx = Core.DX[miss.d], gdy = Core.DY[miss.d];
+      arrow(gp[0] + gdx * cs * .62, gp[1] + gdy * cs * .62, cs * .7, miss.d * Math.PI / 2, "#27363e", .35 + .3 * Math.sin(t * 5));
+      // 指:押す → すべらせる → 離す
+      var mv = ph < .25 ? 0 : ph < .7 ? (ph - .25) / .45 : 1, ea = mv * mv * (3 - 2 * mv), press = ph > .12 && ph < .75;
+      var fx = gp[0] + gdx * cs * .75 * ea + cs * .12, fy = gp[1] + gdy * cs * .75 * ea + cs * .16, fa = ph < .85 ? 1 : (1 - ph) / .15;
+      if (press){ ctx.strokeStyle = "rgba(255,255,255," + (.8 * fa) + ")"; ctx.lineWidth = cs * .09; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(gp[0], gp[1]); ctx.lineTo(gp[0] + gdx * cs * .75 * ea, gp[1] + gdy * cs * .75 * ea); ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255," + (.7 * fa) + ")"; ctx.beginPath(); ctx.arc(fx - cs * .12, fy - cs * .16, cs * .12, 0, 7); ctx.fill(); }
+      ctx.save(); ctx.translate(fx, fy); ctx.scale(press ? .9 : 1, press ? .9 : 1); ctx.globalAlpha = fa;
+      ctx.fillStyle = "#fff"; ctx.strokeStyle = "#27363e"; ctx.lineWidth = cs * .03;
+      ctx.beginPath(); ctx.roundRect(-cs * .07, -cs * .2, cs * .14, cs * .3, cs * .07); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.roundRect(-cs * .12, cs * .02, cs * .28, cs * .26, cs * .1); ctx.fill(); ctx.stroke();
+      ctx.restore(); ctx.globalAlpha = 1; } }
+  // なぞっている間の予告
+  if (drag && P.type[drag.c] === 0){ var dp = xy(g, drag.c), has = st[drag.c] >= 0;
+    ctx.strokeStyle = "rgba(39,54,62,.5)"; ctx.lineWidth = cs * .03; ctx.setLineDash([cs * .08, cs * .08]); ctx.beginPath(); ctx.arc(dp[0], dp[1], cs * .44, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    if (drag.d >= 0 && !has && stones.length < L.k) stoneShape(dp[0], dp[1], cs, 1.12, drag.d * Math.PI / 2, "#27363e", "#27363e", .7);
+    if (drag.d >= 0 && has) arrow(dp[0] + Core.DX[drag.d] * cs * .62, dp[1] + Core.DY[drag.d] * cs * .62, cs * .8, drag.d * Math.PI / 2, "#27363e", .75); }
+  // 花(ばねで開く)
+  L.flowers.forEach(function(f, k){ var fl = flowers[k], tgt = fl.st === 1 ? 1 : 0;
+    if (reduce){ fl.open = tgt; } else { fl.vel = fl.vel * .72 + (tgt - fl.open) * .2; fl.open += fl.vel; }
+    flowerShape(g.ox + (f.x + .5) * cs, g.oy + (f.y + .5) * cs, cs, f, fl, t, k); });
+  // 粒・輪・ひかり
+  for (i = parts.length - 1; i >= 0; i--){ var q = parts[i]; q.t += dt; if (q.t > q.life){ parts.splice(i, 1); continue; }
+    var u = q.t / q.life, base = q.abs ? [g.ox, g.oy] : xy(g, q.c);
+    if (q.k === "ring"){ ctx.strokeStyle = rgba(q.col, (1 - u) * .8); ctx.lineWidth = cs * .06 * (1 - u); ctx.beginPath(); ctx.arc(base[0], base[1], cs * (.3 + u * .55), 0, 7); ctx.stroke(); }
+    else if (q.k === "flash"){ ctx.fillStyle = rgba(q.col, (1 - u) * .75); ctx.beginPath(); ctx.arc(base[0], base[1], cs * (.25 + u * .6), 0, 7); ctx.fill(); }
+    else { if (q.g) q.vy += q.g * dt; q.x += q.vx * dt; q.y += q.vy * dt; var X = base[0] + q.x * cs, Y = base[1] + q.y * cs;
+      if (q.k === "dot"){ ctx.fillStyle = rgba(q.col, 1 - u); ctx.beginPath(); ctx.arc(X, Y, cs * q.r * (1 - u * .5), 0, 7); ctx.fill(); ctx.strokeStyle = "rgba(39,54,62," + (.3 * (1 - u)) + ")"; ctx.lineWidth = 1; ctx.stroke(); }
+      else { q.rot += q.vr * dt; ctx.save(); ctx.translate(X, Y); ctx.rotate(q.rot); ctx.globalAlpha = Math.min(1, (1 - u) * 2.2); ctx.fillStyle = q.col;
+        ctx.beginPath(); ctx.ellipse(0, 0, cs * q.r, cs * q.r * .55, 0, 0, 7); ctx.fill(); ctx.strokeStyle = "rgba(39,54,62,.3)"; ctx.lineWidth = 1; ctx.stroke(); ctx.restore(); ctx.globalAlpha = 1; } } }
+}
+window.__game = { load:load, place:function(x, y, d){ place(y * L.w + x, d); }, remove:function(x, y){ return removeAt(y * L.w + x); },
+  state:function(){ return {cur:cur, won:won, panel:panelShown, stones:stones.map(function(s){ return [s.c, s.d]; }), flowers:flowers.map(function(f){ return f.st; }), simWin:sim.win}; } };
+var first = 0; for (var i = 0; i < LEVELS.length; i++){ if (!store[i]){ first = i; break; } }
+load(first); requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
