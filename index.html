@@ -211,6 +211,7 @@ function stoneArr(){ var a = new Int8Array(L.w * L.h).fill(-1); stones.forEach(f
 function status(r, k){ return r.recv[k] === L.flowers[k].need ? 1 : (r.recv[k] ? 2 : 0); }
 function load(i){
   cur = Math.max(0, Math.min(LEVELS.length - 1, i)); L = LEVELS[cur]; P = Core.prep(L);
+  store.last = cur; save();
   stones = []; undoStack = []; won = false; winAt = -1; panelShown = false; events = []; parts = []; bloomCount = 0; hintGhost = null; drag = null;
   sim = Core.simulate(L, P, stoneArr()); flowT0 = clk; d0 = 0;
   flowers = L.flowers.map(function(f, k){ return {st:0, recv:0, open:0, vel:0, shakeT:-9, pop:0}; });
@@ -467,7 +468,8 @@ function draw(now){
 }
 window.__game = { load:load, place:function(x, y, d){ place(y * L.w + x, d); }, remove:function(x, y){ return removeAt(y * L.w + x); },
   state:function(){ return {cur:cur, won:won, panel:panelShown, stones:stones.map(function(s){ return [s.c, s.d]; }), flowers:flowers.map(function(f){ return f.st; }), simWin:sim.win}; } };
-load(0); requestAnimationFrame(draw);
+var startAt = (typeof store.last === "number" && store.last >= 0 && store.last < LEVELS.length) ? store.last : 0;
+load(startAt); requestAnimationFrame(draw);
 })();
 </script>
 </body>
